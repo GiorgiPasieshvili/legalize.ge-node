@@ -30,26 +30,26 @@ app.use('/assets', express.static('assets'));
 app.use('/generate', express.static('generate'));
 
 // Local SSL Connection
-// https.createServer({
-//     key: fs.readFileSync(process.env.SSL_KEY),
-//     cert: fs.readFileSync(process.env.SSL_CERT)
-//   }, app).listen(8000);
-// console.log(`Connection With SSH https://localhost:8000`)
+if(process.env.ENVIROMENT === 'local'){
+  https.createServer({
+    key: fs.readFileSync(process.env.SSL_KEY),
+    cert: fs.readFileSync(process.env.SSL_CERT)
+  }, app).listen(8000);
+console.log(`Connection With SSH https://localhost:8000`)
+}
 
 app.listen(3000);
 console.log(`Default Connection http://localhost:3000`);
 
 // Home Page
 app.get('/', (req, res) => {
-	let isTokenExpired = req.query.param1 || false;
-
 	const usersList = fs
 		.readdirSync('./database')
 		.map((userJSON) => (userJSON = JSON.parse(fs.readFileSync(`./database/${userJSON}`, 'utf8'))))
 		.sort((a, b) => b.card_number - a.card_number)
 		.slice(0, 6);
 
-	res.render(__dirname + '/snippet/index', { usersList, isTokenExpired });
+	res.render(__dirname + '/snippet/index', { usersList });
 });
 
 // All Users Page
@@ -95,23 +95,23 @@ app.get('/create-card', (req, res) => {
 
 // User verify and save data
 app.post( "/create-card", [urlencodedParser, upload.single("image")], async (req, res) => {
-  try {
-    const drupalResponse = await axiosInstance.get('/jsonapi/', { cache: 'no-cache', headers: { 'Authorization': req.body.token } } );
 
-    // If user logged correctly
-    if(drupalResponse.data.meta){
-      
+  axiosInstance.get('/jsonapi', { headers: { 'Authorization': req.body.token } } )
+  .then((response) => {
+    // If user is logged successfully
+    if(response && response.data.meta){
+
       if(req.body.other_statuses == null) req.body.other_statuses = [];
       if(typeof req.body.other_statuses !== "object") req.body.other_statuses = [req.body.other_statuses];
 
       const fullName = convertLetters(req.body.name, 'geo').trim().split(/[ ]+/gi);
       const idNumTaken = fs.existsSync(`./database/${req.body.id_number}.json`);
 
-      req.body.drupal_id = drupalResponse.data.meta.links.me.meta.id;
+      req.body.drupal_id = response.data.meta.links.me.meta.id;
       req.body.img = `/assets/img/users-images/${req.file.originalname}`;
       req.body.name = fullName.join(" ");
       req.body.registration = new Date().toISOString().slice(0, 10);
-     
+    
       async function userSaveToDrupal(details, firstName, lastName) {
         // Save user into drupal base
         try {
@@ -136,7 +136,7 @@ app.post( "/create-card", [urlencodedParser, upload.single("image")], async (req
           };
           await axiosInstance.patch(`/jsonapi/user/user/${details.drupal_id}`, body, config );
         } catch (err) {
-          console.log(err)
+          console.log(err.response.data)
         }
       }
 
@@ -150,10 +150,11 @@ app.post( "/create-card", [urlencodedParser, upload.single("image")], async (req
 
           delete details.token;
           fs.writeFileSync(`./database/${details.id_number}.json`, JSON.stringify(details), err => { if(err) console.log(err) })
-          res.redirect(`/user/${details.id_number}`);
-
+          
           // Create card image
           cardtoimg(details)
+
+          res.redirect(`/user/${details.id_number}`);
         } catch (err) {
           console.log(err)
         }
@@ -163,13 +164,13 @@ app.post( "/create-card", [urlencodedParser, upload.single("image")], async (req
       if(idNumTaken){
 
         const userData = JSON.parse(fs.readFileSync(`./database/${req.body.id_number}.json`, 'utf8'));
-        if(userData.drupal_id === req.body.drupal_id){
+        if(userData.drupal_id === req.body.drupal_id || userData.drupal_id === ''){
           req.body.card_number = userData.card_number;
           userSaveToDrupal(req.body, fullName[0], fullName[fullName.length - 1]);
           userSaveToServer(req.body);
         } else {
-          console.log('id number already used')
-          res.redirect('/create-card')
+          console.log(`${req.body.drupal_id} is trying to use Personal ID ${req.body.id_number} that is already in use`)
+          res.redirect('back')
         }
   
       } else {
@@ -182,23 +183,18 @@ app.post( "/create-card", [urlencodedParser, upload.single("image")], async (req
         userSaveToDrupal(req.body, fullName[0], fullName[fullName.length - 1]);
         userSaveToServer(req.body);
       }
-
     } else {
-    // If user is not logged
-      res.redirect('/create-card')
+      // If user is not logged successfully
+      console.log('meta information is not included')
+      res.redirect('back');
     }
-    
-  } catch (err) {
-    // If token is not valid
+  })
+  .catch((err) => {
     if(err.response.status === 401){
-      console.log('Token is not vaild')
-      res.redirect('/?param1=expired')
-    } else {
-      // if drupal side problems or else
-      console.log(err.message)
-      res.redirect('/create-card')
+      console.log('access token is invalid')
+      res.redirect('back');
     }
-  }
+  })
 });
 
 // User Authorization
@@ -228,20 +224,26 @@ app.get("/authorization/:authType/:token&:expirationTime&:userID", async (req, r
     // Get user information
     const oauthTokens = await axiosInstance.post('/oauth/token', formData, { headers: formData.getHeaders() } );
     const token = `Bearer ${oauthTokens.data.access_token}`;
-    const refreshToken = oauthTokens.data.refresh_token;
     
-    const drupalResponse = await axiosInstance.get('/jsonapi/', { cache: 'no-cache', headers: { 'Authorization': token } } );
+    const drupalResponse = await axiosInstance.get('/jsonapi', { headers: { 'Authorization': token } } );
     const drupalID = drupalResponse.data.meta.links.me.meta.id
 
-    const userResponse = await axiosInstance.get(`/jsonapi/user/user/${drupalID}`, { cache: 'no-cache', headers: { 'Authorization': token } } );
-    const userPictureResponse = await axiosInstance.get(`/jsonapi/user/user/${drupalID}/user_picture`, { cache: 'no-cache', headers: { 'Authorization': token } } );
+    const userResponse = await axiosInstance.get(`/jsonapi/user/user/${drupalID}`, { headers: { 'Authorization': token } } );
+    const userPictureResponse = await axiosInstance.get(`/jsonapi/user/user/${drupalID}/user_picture`, { headers: { 'Authorization': token } } );
 
-    const userLoginName = userResponse.data.data.attributes.name
-    const userFirstName = userResponse.data.data.attributes.field_first_name
-    const userLastName = userResponse.data.data.attributes.field_last_name
-    const userPicture = userPictureResponse.data.data ? process.env.DRUPAL_DOMAIN + userPictureResponse.data.data.attributes.uri.url : `/assets/img/avatar.png`;
+    const localStore = {
+      token: `Bearer ${oauthTokens.data.access_token}`,
+      refreshToken: oauthTokens.data.refresh_token,
+      drupalID: drupalResponse.data.meta.links.me.meta.id,
+      userLoginName: userResponse.data.data.attributes.name,
+      userFirstName: userResponse.data.data.attributes.field_first_name,
+      userLastName: userResponse.data.data.attributes.field_last_name,
+      userDateOfBirth: userResponse.data.data.attributes.field_date_of_birth,
+      userPersonalId: userResponse.data.data.attributes.field_personal_id,
+      userPicture: userPictureResponse.data.data ? process.env.DRUPAL_DOMAIN + userPictureResponse.data.data.attributes.uri.url : `/assets/img/avatar.png`,
 
-    const localStore = { token, refreshToken, drupalID, userPicture, userFirstName, userLastName, userLoginName }
+    }
+    
     res.send({localStore})   
 
   } catch (error) {
@@ -310,3 +312,18 @@ function nextCardNum(priority) {
 
 	return JSON.stringify(nextCardNum).padStart(4, '0');
 }
+
+(function makeImportantDirectories(){
+  if(!fs.existsSync('./database')){
+    fs.mkdirSync('./database');
+  };
+  if(!fs.existsSync('./assets/img/users-images')){
+    fs.mkdirSync('./assets/img/users-images');
+  };
+  if(!fs.existsSync('./generate/card-imgs')){
+    fs.mkdirSync('./generate/card-imgs');
+  };
+  if(!fs.existsSync('./generate/pdf')){
+    fs.mkdirSync('./generate/pdf');
+  };
+})()
