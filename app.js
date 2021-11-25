@@ -14,6 +14,7 @@ import sharp from 'sharp';
 import convertLetters from './assets/js/convertLetters.js';
 import cardtoimg from './generate/cardtoimg.js';
 import generatepdf from './generate/generatepdf.js';
+import generateQR from './assets/js/generateQR.js'
 
 const storage = multer.memoryStorage();
 const upload = multer({ storage });
@@ -63,9 +64,10 @@ app.get('/users', (req, res) => {
 });
 
 // User Inner Page
-app.get('/user/:id', (req, res) => {
+app.get('/user/:id',async (req, res) => {
 	try {
 		const userData = JSON.parse(fs.readFileSync(`./database/${req.params.id}.json`, 'utf8'));
+    userData.generatedQR = await generateQR(`https://legalize.ge/user/${userData.id_number}`);
 		res.render(__dirname + '/snippet/profile', { ...userData });
 	} catch (error) {
 		res.redirect(`/create-card`);
@@ -241,7 +243,8 @@ app.get("/authorization/:authType/:token&:expirationTime&:userID", async (req, r
       userDateOfBirth: userResponse.data.data.attributes.field_date_of_birth,
       userPersonalId: userResponse.data.data.attributes.field_personal_id,
       userPicture: userPictureResponse.data.data ? process.env.DRUPAL_DOMAIN + userPictureResponse.data.data.attributes.uri.url : `/assets/img/avatar.png`,
-
+      userPhoneNumber: userResponse.data.data.attributes.field_tel,
+      userEmail: userResponse.data.data.attributes.mail,
     }
     
     res.send({localStore})   
@@ -259,16 +262,8 @@ app.get('/constitution', (req, res) => {
 
 // Download PDFs Page
 app.get('/cards-download', (req, res) => {
-	let important = [],
-		staff = [],
-		users = [];
-
-	fs.readdirSync('generate/pdf').forEach((PDF) => {
-		const firstDocumentValue = parseInt(PDF.split('-')[0].replace('.pdf', ''));
-		firstDocumentValue < 10 ? important.push(PDF) : firstDocumentValue < 1000 ? staff.push(PDF) : users.push(PDF);
-	});
-
-	res.render(__dirname + '/snippet/card-download', { important, staff, users });
+  let documentsDir = fs.readdirSync('generate/pdf');
+	res.render(__dirname + '/snippet/card-download', { documentsDir });
 });
 
 app.post('/cards-download', (req, res) => {
@@ -279,38 +274,20 @@ app.post('/cards-download', (req, res) => {
 		.catch((err) => console.log(err));
 });
 
+app.get("/petition", (req, res) => {
+  res.render(__dirname + "/snippet/petition");
+});
+
 // Define unused card number
-function nextCardNum(priority) {
-	let mostReservedCards = [];
-	let reservedCards = [];
-	let otherCards = [];
+function nextCardNum() {
+  
+  const base = fs.readdirSync("./database")
+  .map(member => member = JSON.parse(fs.readFileSync(`./database/${member}`, 'utf8')).card_number)
+  .sort((a, b) => b - a);
 
-	fs.readdirSync('./database').forEach((user) => {
-		user = JSON.parse(fs.readFileSync(`./database/${user}`, 'utf8'));
-		if (Number(user.card_number) <= 10) {
-			mostReservedCards.push(user.card_number);
-		} else if (Number(user.card_number) <= 1000) {
-			reservedCards.push(user.card_number);
-		} else if (Number(user.card_number) > 1000) {
-			otherCards.push(user.card_number);
-		}
-	});
+  let nextCardNum = Number(base[0]) + 1 || 1;
 
-	mostReservedCards.sort((a, b) => b - a);
-	reservedCards.sort((a, b) => b - a);
-	otherCards.sort((a, b) => b - a);
-
-	let nextCardNum;
-
-	if (priority == 1) {
-		nextCardNum = Number(mostReservedCards[0]) + 1 || 1;
-	} else if (priority == 2) {
-		nextCardNum = Number(reservedCards[0]) + 1 || 11;
-	} else {
-		nextCardNum = Number(otherCards[0]) + 1 || 1001;
-	}
-
-	return JSON.stringify(nextCardNum).padStart(4, '0');
+  return JSON.stringify(nextCardNum).padStart(4, '0')
 }
 
 (function makeImportantDirectories(){
