@@ -1,0 +1,61 @@
+.container#petitionContainer
+
+  ul.sign-options#options
+    li#authItem
+      a.collapsed(data-bs-toggle='collapse' data-bs-target='#authSign')
+        | ავტორიზაცია და ხელმოწერა
+        i.bx.bx-chevron-down.icon-show
+        i.bx.bx-chevron-up.icon-close
+      #authSign.collapse(data-bs-parent='.sign-options')
+        button.login-btn.mt-2#loginBtn2
+          i.bx.bxl-facebook-square
+          span ავტორიზაცია
+
+    li#sign-item
+      a.collapsed(data-bs-toggle='collapse' data-bs-target='#noAuthSign')
+        span#signHeading ხელმოწერა ავტორიზაციის გარეშე 
+        i.bx.bx-chevron-down.icon-show
+        i.bx.bx-chevron-up.icon-close
+      #noAuthSign.collapse.show(data-bs-parent='.sign-options')
+        form#formPetition.form.col-12.col-md-8.col-lg-6
+          div.messages
+            #successMessage.alert.alert-success პეტიცია წარმატებით დაემატა
+              i.bx.bx-checkbox-checked
+            #deniedMessage.alert.alert-danger სცადეთ მოგვიანებით
+              i.bx.bx-error-circle
+          .form-container
+            h3.heading პეტიცია
+            h4.petitionText=petitionBodyText
+            .form-group.mb-3
+              label.col-form-label სახელი*
+              input.form-control(type='text' placeholder='მიუთითეთ სახელი' id="nameInput" required)
+            .form-group.mb-3
+              label.col-form-label გვარი*
+              input.form-control(type='text' placeholder='მიუთითეთ გვარი' id="surnameInput" required)
+            .form-group.mb-3
+              label.col-form-label პირადი ნომერი*
+              input.form-control(type='number' placeholder='მიუთითეთ პირადი ნომერი'
+                onInput="this.value = this.value.slice(0, 11)"
+                id="personalNumInput" required)
+            .form-group.mb-3
+              label.col-form-label ტელეფონის ნომერი*
+              input.form-control(type='number' placeholder='მიუთითეთ ტელეფონის ნომერი' 
+                onInput="this.value = this.value.slice(0, 9)"
+                id="phoneNumInput" required)
+            .form-group.mb-5
+              label.col-form-label ელ.ფოსტა*
+              input.form-control(type='email' placeholder='მიუთითეთ ელ. ფოსტა' id="emailInput" required)
+            .form-group.text-center
+              input#submitBtn.btn(type='submit' value='ხელის მოწერა')
+
+
+
+    li#results-item
+      a.collapsed(data-bs-toggle='collapse' data-bs-target='#signedList')
+        | ხელმომწერთა სია
+        i.bx.bx-chevron-down.icon-show
+        i.bx.bx-chevron-up.icon-close
+      #signedList.collapse.show(data-bs-parent='.sign-options')
+        div
+          ul#petitionList
+          button#loadBtn.btn.mt-2(style="display:none") მეტის ნახვა

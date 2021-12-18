@@ -4,12 +4,14 @@
   "version": "2.1.0",
   "description": "cannabis lovers community",
   "scripts": {
-    "start": "node app.js"
+    "start": "node app.js",
+    "launch": "npm i && npm start"
   },
-  "author": "girchi",
+  "author": "Girchi Dev Team",
   "license": "ISC",
   "dependencies": {
     "axios": "^0.22.0",
+    "cors": "^2.8.5",
     "dotenv": "^10.0.0",
     "express": "^4.17.1",
     "form-data": "^4.0.0",
